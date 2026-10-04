@@ -4,6 +4,7 @@ import { TREE, DIFFS, QUALITIES, defaultState, levels, goatman, tainted, defiler
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STORE = 'd2r-warlock.summoner.v1';
+const icon = (skill) => `img/skills/${skill.toLowerCase().replace(/ /g, '-')}.png`;
 
 // ---------- persistence ----------
 function loadStore() {
@@ -29,6 +30,7 @@ function hydrate(saved) {
 const store = loadStore();
 let state = hydrate(store.draft);
 let selected = 'Summon Goatman';
+let tip = null; // [x, y] the skill card is anchored to while a tree node is hovered or focused
 const active = () => store.profiles.find((p) => p.id === store.activeId);
 const dirty = () => { const a = active(); return a && JSON.stringify(hydrate(a.state)) !== JSON.stringify(state); };
 
@@ -40,7 +42,7 @@ function buildTree() {
   })).join('');
   $('tree').innerHTML = `<svg viewBox="0 0 3 6" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>` + TREE.map((t) => `
     <div class="node${t.passive ? ' passive' : ''}" data-skill="${esc(t.id)}" style="grid-row:${t.row};grid-column:${t.col}">
-      <button class="icon" title="${esc(t.id)}" aria-label="${esc(t.id)}">${t.glyph}</button>
+      <button class="icon" title="${esc(t.id)}" aria-label="${esc(t.id)}"><img src="${icon(t.id)}" alt="" width="60" height="60"></button>
       <span class="lvl"></span>
       <div class="step" title="Skill points"><button data-d="-1" aria-label="Remove point from ${esc(t.id)}">−</button><output class="base"></output><button data-d="1" aria-label="Add point to ${esc(t.id)}">+</button></div>
       <div class="step items" data-k="bonus" title="+ to ${esc(t.id)} from items"><button data-d="-1" aria-label="Lower item bonus to ${esc(t.id)}">−</button><output class="bonus"></output><button data-d="1" aria-label="Raise item bonus to ${esc(t.id)}">+</button></div>
@@ -65,12 +67,38 @@ function buildTree() {
     e.preventDefault();
     addPoints(node.dataset.skill, e.shiftKey ? -5 : -1);
   });
-  const select = (e) => {
-    const node = e.target.closest('.node');
-    if (node && node.dataset.skill !== selected) { selected = node.dataset.skill; renderTree(); renderDetail(); }
+  const select = (node) => {
+    if (node.dataset.skill !== selected) { selected = node.dataset.skill; renderTree(); renderDetail(); }
   };
-  $('tree').addEventListener('mouseover', select);
-  $('tree').addEventListener('focusin', select);
+  const hide = () => { tip = null; $('detail').hidden = true; };
+  $('tree').addEventListener('mousemove', (e) => {
+    const node = e.target.closest('.node');
+    if (!node) return hide();
+    select(node);
+    tip = [e.clientX, e.clientY];
+    placeDetail();
+  });
+  $('tree').addEventListener('mouseleave', hide);
+  // keyboard focus has no pointer: anchor the card to the node instead
+  $('tree').addEventListener('focusin', (e) => {
+    const node = e.target.closest('.node');
+    if (!node || !e.target.matches(':focus-visible')) return;
+    select(node);
+    const r = node.getBoundingClientRect();
+    tip = [r.right - 16, r.top - 16];
+    placeDetail();
+  });
+  $('tree').addEventListener('focusout', hide);
+}
+
+// right of the pointer if the card fits in the viewport, left of it otherwise
+function placeDetail() {
+  if (!tip) return;
+  const d = $('detail'), gap = 16, vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  d.hidden = false;
+  const [x, y] = tip, w = d.offsetWidth, h = d.offsetHeight;
+  d.style.left = `${x + gap + w <= vw ? x + gap : Math.max(0, x - gap - w)}px`;
+  d.style.top = `${Math.max(0, Math.min(y + gap, vh - h))}px`;
 }
 
 function renderTree() {
@@ -102,6 +130,7 @@ function renderDetail() {
     ${l.lvl ? block('Current Skill Level', l.lvl) : ''}
     ${l.lvl ? '' : '<p class="dim">No points yet</p>'}
     ${block(l.lvl ? 'Next Level' : 'First Level', l.lvl + 1)}`;
+  placeDetail();
 }
 
 // ---------- minion cards ----------
@@ -115,7 +144,6 @@ function sections(m) {
     + (m.consume ? `<h3>When consumed</h3><ul class="magic">${m.consume.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
 }
 function summonCard(el, title, skill, m) {
-  el.classList.toggle('off', !m);
   el.innerHTML = `<header><h2>${title}</h2><span>${m ? `Skill level ${m.lvl} · Max Demons ${m.max}` : ''}</span></header>`
     + (m ? sections(m) : `<p class="empty">Put a point into ${skill} to summon it.</p>`);
 }
@@ -138,7 +166,53 @@ function renderBound() {
     + sections(r) + (info ? `<h3>Binding</h3><ul>${info}</ul>` : '');
 }
 
+// [card id, tab label, skill that summons it]
+const SUMMONS = [['goatman', 'Goatman', 'Summon Goatman'], ['tainted', 'Tainted', 'Summon Tainted'],
+  ['defiler', 'Defiler', 'Summon Defiler'], ['bound', 'Bound Demon', 'Bind Demon']];
+function buildSummonTabs() {
+  if (!SUMMONS.some(([id]) => id === store.summon)) store.summon = SUMMONS[0][0];
+  $('summon-tabs').innerHTML = SUMMONS.map(([id, label, skill]) =>
+    `<button role="tab" id="tab-${id}" data-summon="${id}" aria-controls="card-${id}"><img src="${icon(skill)}" alt="" width="36" height="36"><span>${label}</span></button>`).join('');
+  for (const [id] of SUMMONS) $(`card-${id}`).setAttribute('aria-labelledby', `tab-${id}`);
+  new ResizeObserver(fitSummonTabs).observe($('summon-tabs'));
+  document.fonts?.ready.then(fitSummonTabs);
+  $('summon-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-summon]');
+    if (!tab) return;
+    store.summon = tab.dataset.summon;
+    renderSummonTabs(); persist();
+  });
+  $('summon-tabs').addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!step) return;
+    const i = SUMMONS.findIndex(([id]) => id === store.summon);
+    store.summon = SUMMONS[(i + step + SUMMONS.length) % SUMMONS.length][0];
+    renderSummonTabs(); persist();
+    $(`tab-${store.summon}`).focus();
+  });
+}
+// shrink the tabs step by step until all of them fit on one row:
+// 0 full size, 1 smaller icon, 2 smaller icon + smaller text, 3 text only
+function fitSummonTabs() {
+  const el = $('summon-tabs');
+  for (let i = 0; i < 4; i++) {
+    el.dataset.size = i;
+    if (el.scrollWidth <= el.clientWidth) break;
+  }
+}
+function renderSummonTabs() {
+  const L = levels(state);
+  for (const [id, , skill] of SUMMONS) {
+    const on = id === store.summon, tab = $(`tab-${id}`);
+    tab.setAttribute('aria-selected', on);
+    tab.tabIndex = on ? 0 : -1;
+    tab.classList.toggle('off', !L[skill].lvl);
+    $(`card-${id}`).hidden = !on;
+  }
+}
+
 function renderCards() {
+  renderSummonTabs();
   summonCard($('card-goatman'), 'Goatman', 'Summon Goatman', goatman(state));
   summonCard($('card-tainted'), 'Tainted', 'Summon Tainted', tainted(state));
   summonCard($('card-defiler'), 'Defiler', 'Summon Defiler', defiler(state));
@@ -207,31 +281,54 @@ function buildMonsterPicker() {
   list.addEventListener('click', (e) => e.preventDefault()); // keep the enclosing <label> from refocusing the input
 }
 
-const EFFECTS = ['engorge', 'deathMark', 'frenzy'];
+// [state key, label, skill it scales with, minimum level of that skill, what it does]
+const EFFECTS = [['engorge', 'Engorge', 'Engorge', 1, 'attack speed, defense, physical resist, life steal'],
+  ['deathMark', 'Death Mark', 'Death Mark', 1, 'target takes extra damage per hit'],
+  ['frenzy', 'Goatman Frenzy', 'Summon Goatman', 4, 'attack and run speed']];
+function buildEffects() {
+  $('effects').innerHTML = EFFECTS.map(([k, label, skill]) =>
+    `<button id="fx-${k}" data-fx="${k}" aria-pressed="false"><img src="${icon(skill)}" alt="" width="20" height="20"><span>${label}</span></button>`).join('');
+  $('effects').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fx]');
+    if (!b) return;
+    state[b.dataset.fx] = !state[b.dataset.fx];
+    update();
+  });
+}
+function renderEffects() {
+  for (const b of $('difficulty').children) b.setAttribute('aria-checked', +b.dataset.d === state.difficulty);
+  const L = levels(state);
+  for (const [k, label, skill, min, what] of EFFECTS) {
+    const b = $(`fx-${k}`), usable = L[skill].lvl >= min;
+    b.setAttribute('aria-pressed', !!state[k]);
+    b.classList.toggle('off', !usable);
+    b.title = `${label} — ${what}` + (usable ? '' : ` (no effect until ${skill} is level ${min})`);
+  }
+}
 
 function buildInputs() {
   const opts = (list) => list.map((n, i) => `<option value="${i}">${n}</option>`).join('');
-  $('difficulty').innerHTML = opts(DIFFS);
+  $('difficulty').innerHTML = DIFFS.map((d, i) => `<button role="radio" data-d="${i}">${d}</button>`).join('');
+  $('difficulty').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-d]');
+    if (b) { state.difficulty = +b.dataset.d; update(); }
+  });
   $('b-difficulty').innerHTML = opts(DIFFS);
   $('b-quality').innerHTML = opts(QUALITIES);
 
   buildMonsterPicker();
 
   const bind = (id, set) => $(id).addEventListener('input', (e) => { set(e.target); update({ keepInputs: true }); });
-  bind('difficulty', (el) => { state.difficulty = +el.value; });
   bind('allSkills', (el) => { state.allSkills = clamp(el.value, 0, 99); });
   bind('treeSkills', (el) => { state.treeSkills = clamp(el.value, 0, 99); });
-  for (const k of EFFECTS) bind(`fx-${k}`, (el) => { state[k] = el.checked; });
   bind('b-quality', (el) => { state.bound.quality = +el.value; });
   bind('b-difficulty', (el) => { state.bound.difficulty = +el.value; });
   bind('b-mlvl', (el) => { state.bound.mlvl = el.value === '' ? null : clamp(el.value, 1, 110); });
   bind('b-players', (el) => { state.bound.players = clamp(el.value, 1, 8); });
 }
 function syncInputs() {
-  $('difficulty').value = state.difficulty;
   $('allSkills').value = state.allSkills;
   $('treeSkills').value = state.treeSkills;
-  for (const k of EFFECTS) $(`fx-${k}`).checked = state[k];
   $('b-monster').value = monsterLabel(monster(state.bound.monster));
   $('b-quality').value = state.bound.quality;
   $('b-difficulty').value = state.bound.difficulty;
@@ -298,8 +395,8 @@ function buildProfiles() {
 
 function update({ keepInputs } = {}) {
   if (!keepInputs) syncInputs();
-  renderTree(); renderDetail(); renderCards();
+  renderTree(); renderDetail(); renderEffects(); renderCards();
   persist(); renderProfiles();
 }
 
-buildTree(); buildInputs(); buildProfiles(); update();
+buildTree(); buildInputs(); buildEffects(); buildSummonTabs(); buildProfiles(); update();

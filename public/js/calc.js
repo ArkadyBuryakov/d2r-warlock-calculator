@@ -7,16 +7,16 @@ export const QUALITIES = ['Normal', 'Champion', 'Unique', 'Minion'];
 
 // row/col are the in-game Demon tab positions (skilldesc.txt)
 export const TREE = [
-  { id: 'Demonic Mastery', row: 1, col: 1, glyph: '♆', passive: true, desc: 'Passive - Enhances your summoned and bound demons' },
-  { id: 'Summon Goatman', row: 1, col: 3, glyph: '♑', desc: 'Summons a Goatman to fight by your side' },
-  { id: 'Blood Oath', row: 2, col: 1, glyph: '♥', passive: true, desc: 'Passive - Bind the lifeforce of your demon to protect from enemy attacks' },
-  { id: 'Death Mark', row: 2, col: 2, glyph: '☠', desc: 'Forces your demon to teleport to and attack an enemy' },
-  { id: 'Summon Tainted', row: 3, col: 3, glyph: '☄', desc: 'Summons a Tainted to fight by your side' },
-  { id: 'Blood Boil', row: 4, col: 2, glyph: '♨', desc: "Erupt your demon's blood to damage nearby enemies" },
-  { id: 'Summon Defiler', row: 4, col: 3, glyph: '☣', desc: 'Summons a defiler that binds enemy souls together to take shared damage' },
-  { id: 'Engorge', row: 5, col: 2, glyph: '☥', desc: 'Heal and empower your demon by feeding it a corpse' },
-  { id: 'Consume', row: 6, col: 1, glyph: '♄', desc: 'Sacrifice your demon in exchange for power' },
-  { id: 'Bind Demon', row: 6, col: 3, glyph: '⛓', desc: 'Force an injured demon to do your bidding' },
+  { id: 'Demonic Mastery', row: 1, col: 1, passive: true, desc: 'Passive - Enhances your summoned and bound demons' },
+  { id: 'Summon Goatman', row: 1, col: 3, desc: 'Summons a Goatman to fight by your side' },
+  { id: 'Blood Oath', row: 2, col: 1, passive: true, desc: 'Passive - Bind the lifeforce of your demon to protect from enemy attacks' },
+  { id: 'Death Mark', row: 2, col: 2, desc: 'Forces your demon to teleport to and attack an enemy' },
+  { id: 'Summon Tainted', row: 3, col: 3, desc: 'Summons a Tainted to fight by your side' },
+  { id: 'Blood Boil', row: 4, col: 2, desc: "Erupt your demon's blood to damage nearby enemies" },
+  { id: 'Summon Defiler', row: 4, col: 3, desc: 'Summons a defiler that binds enemy souls together to take shared damage' },
+  { id: 'Engorge', row: 5, col: 2, desc: 'Heal and empower your demon by feeding it a corpse' },
+  { id: 'Consume', row: 6, col: 1, desc: 'Sacrifice your demon in exchange for power' },
+  { id: 'Bind Demon', row: 6, col: 3, desc: 'Force an injured demon to do your bidding' },
 ].map((t) => ({ ...t, req: DATA.skills[t.id].req, reqlevel: DATA.skills[t.id].reqlevel }));
 
 export function defaultState() {
