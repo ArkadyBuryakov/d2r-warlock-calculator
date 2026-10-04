@@ -1,0 +1,14 @@
+{
+  "name": "d2r-warlock",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test",
+    "build:data": "node scripts/build-data.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

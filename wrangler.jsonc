@@ -1,0 +1,6 @@
+{
+  "name": "d2r-warlock",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./public" },
+  "routes": [{ "pattern": "d2r-warlock.buryakov.pro", "custom_domain": true }]
+}
