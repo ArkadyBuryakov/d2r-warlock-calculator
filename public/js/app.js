@@ -14,8 +14,10 @@ function loadStore() {
   } catch { /* corrupt or unavailable storage: start fresh */ }
   return { profiles: [], activeId: null, draft: null };
 }
+// every change is saved straight away: into the selected profile, or into the unsaved build when none is
 function persist() {
-  store.draft = state;
+  const a = active();
+  if (a) a.state = state; else store.draft = state;
   try { localStorage.setItem(STORE, JSON.stringify(store)); } catch { status('Could not write to local storage.'); }
 }
 // merge onto defaults so profiles saved by older versions keep working
@@ -28,11 +30,11 @@ function hydrate(saved) {
 }
 
 const store = loadStore();
-let state = hydrate(store.draft);
+const active = () => store.profiles.find((p) => p.id === store.activeId);
+const stored = () => hydrate(structuredClone(active()?.state ?? store.draft));
+let state = stored();
 let selected = 'Summon Goatman';
 let tip = null; // [x, y] the skill card is anchored to while a tree node is hovered or focused
-const active = () => store.profiles.find((p) => p.id === store.activeId);
-const dirty = () => { const a = active(); return a && JSON.stringify(hydrate(a.state)) !== JSON.stringify(state); };
 
 // ---------- skill tree ----------
 function buildTree() {
@@ -341,35 +343,37 @@ let statusTimer;
 function status(msg) {
   $('profile-status').textContent = msg;
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(renderProfiles, 2500);
+  statusTimer = setTimeout(() => { statusTimer = null; renderProfiles(); }, 2500);
 }
 function renderProfiles() {
   const a = active();
   $('profile-select').innerHTML = '<option value="">— unsaved build —</option>'
     + store.profiles.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   $('profile-select').value = a ? a.id : '';
-  $('profile-save').disabled = !!a && !dirty();
+  $('profile-create').textContent = a ? 'Duplicate' : 'Create profile';
   $('profile-delete').disabled = !a;
-  if (!statusTimer || !$('profile-status').textContent) $('profile-status').textContent = a ? (dirty() ? 'Unsaved changes.' : '') : '';
-}
-function saveAs(name) {
-  const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, state: structuredClone(state) };
-  store.profiles.push(p);
-  store.activeId = p.id;
+  if (!statusTimer) $('profile-status').textContent = '';
 }
 function buildProfiles() {
-  const name = () => $('profile-name').value.trim() || `Summoner ${store.profiles.length + 1}`;
-  const done = (msg) => { persist(); statusTimer = null; renderProfiles(); $('profile-name').value = active()?.name ?? ''; status(msg); };
-  $('profile-save').addEventListener('click', () => {
-    const a = active();
-    if (a) { a.name = $('profile-name').value.trim() || a.name; a.state = structuredClone(state); } else saveAs(name());
-    done(`Saved “${active().name}”.`);
+  const done = (msg) => { $('profile-name').value = active()?.name ?? ''; update(); status(msg); };
+  $('profile-create').addEventListener('click', () => {
+    const a = active(), typed = $('profile-name').value.trim();
+    const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), state: structuredClone(state),
+      name: a ? `${a.name} (copy)` : typed || `Summoner ${store.profiles.length + 1}` };
+    store.profiles.push(p);
+    if (!a) store.draft = null; // the unsaved build has moved into the new profile
+    store.activeId = p.id;
+    state = stored();
+    done(a ? `Copied to “${p.name}”.` : `Created “${p.name}”.`);
   });
-  $('profile-save-new').addEventListener('click', () => {
-    const a = active();
-    saveAs(a && $('profile-name').value.trim() === a.name ? `${a.name} (copy)` : name());
-    done(`Saved “${active().name}” as a new profile.`);
+  // with a profile selected the name field renames it; otherwise it names the profile about to be created
+  $('profile-name').addEventListener('input', (e) => {
+    const a = active(), name = e.target.value.trim();
+    if (!a || !name) return;
+    a.name = name;
+    persist(); renderProfiles();
   });
+  $('profile-name').addEventListener('blur', (e) => { if (active()) e.target.value = active().name; });
   let armed;
   const disarm = () => { clearTimeout(armed); armed = null; $('profile-delete').textContent = 'Delete'; };
   $('profile-delete').addEventListener('click', () => {
@@ -379,14 +383,14 @@ function buildProfiles() {
     disarm();
     store.profiles = store.profiles.filter((p) => p !== a);
     store.activeId = null;
-    done(`Deleted “${a.name}”. The build stays loaded until you reset it.`);
+    state = stored();
+    done(`Deleted “${a.name}”.`);
   });
   $('profile-select').addEventListener('change', (e) => {
     disarm();
     store.activeId = e.target.value || null;
-    const a = active();
-    if (a) state = hydrate(structuredClone(a.state));
-    $('profile-name').value = a?.name ?? '';
+    state = stored();
+    $('profile-name').value = active()?.name ?? '';
     update();
   });
   $('profile-reset').addEventListener('click', () => { state = defaultState(); update(); });
